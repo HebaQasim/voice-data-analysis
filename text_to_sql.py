@@ -13,6 +13,8 @@ RULES = """Rules:
   for example, if the question says "باريس" and the values of the column have "Paris", write 'Paris'.
 - Dates are stored as text like 2025-01-31: use SQLite date functions such as strftime('%Y-%m', column).
 - Give calculated columns short English names with AS, for example COUNT(*) AS row_count.
+- When the question asks for the highest, the lowest or a ranking, also select the value used to compare
+  (for example the total next to the name), so the answer can show the number.
 - If the question cannot be answered from this table, reply with NO_SQL only.
 - Reply with the SQL query only: no explanation and no Markdown code marks."""
 
