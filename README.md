@@ -2,7 +2,7 @@
 
 Ask questions about your dataset by voice or by text, in English or Arabic, without writing SQL. Faster-Whisper turns the voice into text, an LLM writes a SQLite query from the question and the structure of the dataset, the query is checked and run with Python's `sqlite3`, and the answer comes back as a table with a short explanation in the language of the question.
 
-Built for the Cellula Technologies NLP internship (Project 2, part 2). Part 1 of the project, the AI coding assistant with Corrective RAG and the Stack Overflow search, is in [ai-coding-assistant-crag](https://github.com/HebaQasim/ai-coding-assistant-crag).
+Built for the Cellula Technologies NLP internship.
 
 ![The web page](images/app.png)
 
@@ -214,4 +214,3 @@ Each file has a small test that runs with `python <file>.py`. The number of Gemi
 - **No conversation memory:** a follow-up like "and in Cairo?" needs a complete question. The memory of part 1 (SQLite with the last messages) could be added.
 - **One table per question:** questions that need two datasets together (a JOIN) are not supported.
 - **Shared datasets:** everyone who uses the same server sees the same datasets. A real deployment would need user accounts.
-- **Tables only:** the result is shown as a table; a chart would make trends easier to see.
