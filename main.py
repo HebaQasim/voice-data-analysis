@@ -1,4 +1,5 @@
 """Part 6: the FastAPI backend. Every step of the pipeline has its own endpoint, and two endpoints run all of it:
+    GET  /                  the web page (part 7)
     POST /datasets          upload a CSV or Excel file -> a table                  (part 1)
     GET  /datasets          the names of the uploaded datasets
     GET  /datasets/{table}  the description of a dataset, the text the LLM reads
@@ -8,7 +9,7 @@
     POST /ask               a typed question -> SQL, result and explanation        (part 4)
     POST /ask/voice         a recorded question -> text -> SQL, result and explanation
 
-Start the server:   uvicorn main:app --reload      then open http://127.0.0.1:8000/docs
+Start the server:   uvicorn main:app --reload      then open http://127.0.0.1:8000 (or /docs)
 Test the endpoints: python main.py
 """
 import sqlite3
@@ -16,7 +17,7 @@ from typing import Literal
 
 import openai
 from fastapi import FastAPI, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from data_analysis import analyze
@@ -77,6 +78,12 @@ def transcribe_upload(audio, language):
         return transcribe(data, None if language == "auto" else language)
     except ValueError as error:   # no speech in the recording, or the file is not a real recording
         raise HTTPException(400, str(error))
+
+
+# ---------- The web page (part 7) ----------
+@app.get("/", include_in_schema=False)   # include_in_schema=False: the page is not listed in /docs
+def home():
+    return FileResponse("static/index.html")
 
 
 # ---------- Datasets (part 1) ----------

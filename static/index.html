@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<!-- Part 7: the web page. It only talks to the FastAPI endpoints of part 6 with fetch(). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice Data Analysis</title>
+<link rel="icon" href="data:,">   <!-- no icon file: the browser does not ask the server for /favicon.ico -->
+<style>
+  body { margin: 0; background: #f4f5f7; color: #1f2933; font-family: "Segoe UI", Tahoma, Arial, sans-serif; }
+  main { max-width: 780px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  h2 { margin: 0 0 12px; font-size: 18px; }
+  .subtitle { margin: 0 0 20px; color: #52606d; }
+  .card { background: #ffffff; border: 1px solid #dde1e6; border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+  select, textarea, input[type="file"] { font: inherit; }
+  select { padding: 6px 8px; border: 1px solid #c4cbd3; border-radius: 6px; background: #ffffff; }
+  audio:not([hidden]) { display: block; margin-bottom: 12px; }
+  textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #c4cbd3; border-radius: 6px;
+             font-size: 16px; resize: vertical; margin-bottom: 12px; }
+  button { font: inherit; padding: 8px 16px; border: 1px solid #c4cbd3; border-radius: 6px; background: #ffffff; cursor: pointer; }
+  button:hover { background: #eef1f4; }
+  button:disabled { opacity: 0.5; cursor: wait; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #ffffff; }
+  button.primary:hover { background: #1d4ed8; }
+  button.recording { background: #dc2626; border-color: #dc2626; color: #ffffff; }
+  .status { min-height: 22px; margin: 10px 0 0; color: #52606d; }
+  .status.error { color: #b91c1c; }
+  .explanation { font-size: 17px; line-height: 1.6; margin: 0 0 14px; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 12px; font-size: 15px; }
+  th, td { border: 1px solid #dde1e6; padding: 6px 10px; text-align: left; }
+  th { background: #f0f2f5; }
+  pre { white-space: pre-wrap; background: #f7f8fa; border: 1px solid #e4e7eb; border-radius: 6px; padding: 10px;
+        font-size: 13px; overflow-x: auto; }
+  details summary { cursor: pointer; color: #2563eb; margin-top: 4px; }
+  .note { color: #52606d; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Voice Data Analysis</h1>
+  <p class="subtitle">Ask questions about your data by voice or by text, in English or Arabic.</p>
+
+  <section class="card">
+    <h2>1. Your dataset</h2>
+    <div class="row">
+      <input type="file" id="dataset-file" accept=".csv,.xlsx">
+      <button id="upload-button">Upload</button>
+    </div>
+    <div class="row">
+      <label for="dataset-select">Dataset:</label>
+      <select id="dataset-select"></select>
+    </div>
+    <details>
+      <summary>What the AI knows about this dataset</summary>
+      <pre id="description"></pre>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>2. Your question</h2>
+    <div class="row">
+      <label for="language">Language of your voice:</label>
+      <select id="language">
+        <option value="en">English</option>
+        <option value="ar">العربية</option>
+        <option value="auto">Detect automatically</option>
+      </select>
+      <button id="record-button">🎤 Record</button>
+      <label class="note">or a recording: <input type="file" id="audio-file" accept="audio/*"></label>
+    </div>
+    <audio id="playback" controls hidden></audio>
+    <textarea id="question" dir="auto" rows="2"
+              placeholder="Type a question, or record it and check the text before asking"></textarea>
+    <button id="ask-button" class="primary">Ask</button>
+    <p id="status" class="status"></p>
+  </section>
+
+  <section class="card" id="answer-card" hidden>
+    <h2>3. Answer</h2>
+    <p id="explanation" class="explanation" dir="auto"></p>
+    <div id="table-box"></div>
+    <details>
+      <summary>SQL query</summary>
+      <pre id="sql"></pre>
+    </details>
+  </section>
+</main>
+
+<script>
+const datasetFile = document.getElementById("dataset-file");
+const uploadButton = document.getElementById("upload-button");
+const datasetSelect = document.getElementById("dataset-select");
+const description = document.getElementById("description");
+const languageSelect = document.getElementById("language");
+const recordButton = document.getElementById("record-button");
+const audioFile = document.getElementById("audio-file");
+const playback = document.getElementById("playback");
+const questionBox = document.getElementById("question");
+const askButton = document.getElementById("ask-button");
+const statusLine = document.getElementById("status");
+const answerCard = document.getElementById("answer-card");
+const explanation = document.getElementById("explanation");
+const tableBox = document.getElementById("table-box");
+const sqlBox = document.getElementById("sql");
+
+function showStatus(text, isError = false) {
+  statusLine.textContent = text;
+  statusLine.className = isError ? "status error" : "status";
+}
+
+// While a request runs, the buttons are disabled, so the same request is not sent twice
+function setBusy(busy) {
+  for (const button of [uploadButton, askButton, recordButton]) {
+    button.disabled = busy;
+  }
+}
+
+// Send a request to the API and return the JSON answer.
+// If the API answers with an error (400, 404, 503 ...), throw it with its "detail" message.
+async function sendRequest(url, options) {
+  const response = await fetch(url, options);
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(typeof data.detail === "string" ? data.detail : "Please check what you sent.");
+  }
+  return data;
+}
+
+// ---------- 1. Datasets ----------
+async function loadDatasets(selected) {
+  const data = await sendRequest("/datasets");
+  datasetSelect.innerHTML = "";
+  for (const name of data.datasets) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    datasetSelect.append(option);
+  }
+  if (selected) {
+    datasetSelect.value = selected;
+  }
+  await showDescription();
+}
+
+async function showDescription() {
+  if (!datasetSelect.value) {
+    description.textContent = "Upload a CSV or Excel file first.";
+    return;
+  }
+  const data = await sendRequest("/datasets/" + encodeURIComponent(datasetSelect.value));
+  description.textContent = data.description;
+}
+
+uploadButton.onclick = async () => {
+  const file = datasetFile.files[0];
+  if (!file) {
+    showStatus("Choose a CSV or Excel file first.", true);
+    return;
+  }
+  const form = new FormData();
+  form.append("file", file);
+  setBusy(true);
+  showStatus("Uploading...");
+  try {
+    const data = await sendRequest("/datasets", { method: "POST", body: form });
+    await loadDatasets(data.table);
+    showStatus(`The dataset "${data.table}" is ready. Ask a question about it.`);
+  } catch (error) {
+    showStatus(error.message, true);
+  } finally {
+    setBusy(false);
+  }
+};
+
+datasetSelect.onchange = () => showDescription().catch((error) => showStatus(error.message, true));
+
+// ---------- 2. Voice ----------
+// MediaRecorder records the microphone. When the recording stops, the audio goes to /transcribe,
+// and the text is put in the question box, so the user can correct it before asking.
+let recorder = null;
+
+recordButton.onclick = async () => {
+  if (recorder && recorder.state === "recording") {
+    recorder.stop();   // the second click stops the recording
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const chunks = [];
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = (event) => chunks.push(event.data);
+    recorder.onstop = () => {
+      stream.getTracks().forEach((track) => track.stop());   // turn the microphone off
+      recordButton.textContent = "🎤 Record";
+      recordButton.classList.remove("recording");
+      const audio = new Blob(chunks, { type: recorder.mimeType });
+      transcribeAudio(audio, fileNameFor(recorder.mimeType));
+    };
+    recorder.start();
+    recordButton.textContent = "⏹ Stop";
+    recordButton.classList.add("recording");
+    showStatus("Recording... click Stop when you finish your question.");
+  } catch (error) {
+    showStatus("The microphone is not available: " + error.message, true);
+  }
+};
+
+// Each browser records in its own format: the file name tells the server which one
+function fileNameFor(mimeType) {
+  if (mimeType.includes("ogg")) return "recording.ogg";
+  if (mimeType.includes("mp4")) return "recording.m4a";
+  return "recording.webm";
+}
+
+audioFile.onchange = () => {
+  const file = audioFile.files[0];
+  if (file) {
+    transcribeAudio(file, file.name);
+  }
+};
+
+async function transcribeAudio(audio, fileName) {
+  // The user can listen to what was recorded: useful to check the microphone
+  playback.src = URL.createObjectURL(audio);
+  playback.hidden = false;
+  const form = new FormData();
+  form.append("audio", audio, fileName);
+  form.append("language", languageSelect.value);
+  setBusy(true);
+  showStatus("Turning your voice into text...");
+  try {
+    const data = await sendRequest("/transcribe", { method: "POST", body: form });
+    questionBox.value = data.text;
+    showStatus("Check the text, correct it if needed, then click Ask.");
+  } catch (error) {
+    showStatus(error.message, true);
+  } finally {
+    setBusy(false);
+    audioFile.value = "";   // the same file can be chosen again
+  }
+}
+
+// ---------- 3. The answer ----------
+askButton.onclick = async () => {
+  const question = questionBox.value.trim();
+  if (!datasetSelect.value) {
+    showStatus("Upload a dataset first.", true);
+    return;
+  }
+  if (!question) {
+    showStatus("Type or record a question first.", true);
+    return;
+  }
+  setBusy(true);
+  showStatus("Analyzing...");
+  try {
+    const answer = await sendRequest("/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: question, table: datasetSelect.value }),
+    });
+    showAnswer(answer);
+    showStatus("");
+  } catch (error) {
+    showStatus(error.message, true);
+  } finally {
+    setBusy(false);
+  }
+};
+
+function showAnswer(answer) {
+  answerCard.hidden = false;
+  tableBox.innerHTML = "";
+  sqlBox.textContent = answer.sql || "No query was written.";
+  if (answer.status !== "ok") {   // cannot_answer, refused or failed: the message explains why
+    explanation.textContent = answer.message;
+    return;
+  }
+  explanation.textContent = answer.explanation;
+  tableBox.append(makeTable(answer.columns, answer.rows));
+  if (answer.truncated) {
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent = `Only the first ${answer.rows.length} rows are shown.`;
+    tableBox.append(note);
+  }
+}
+
+// textContent (not innerHTML) puts the values in the page as plain text,
+// so a value from the dataset can never run as HTML or JavaScript
+function makeTable(columns, rows) {
+  const table = document.createElement("table");
+  const header = table.insertRow();
+  for (const column of columns) {
+    const cell = document.createElement("th");
+    cell.textContent = column;
+    header.append(cell);
+  }
+  for (const row of rows) {
+    const line = table.insertRow();
+    for (const value of row) {
+      line.insertCell().textContent = value ?? "";
+    }
+  }
+  return table;
+}
+
+loadDatasets().catch((error) => showStatus(error.message, true));
+</script>
+</body>
+</html>

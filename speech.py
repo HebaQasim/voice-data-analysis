@@ -44,7 +44,9 @@ def transcribe(data, language=None):
     # Whisper cuts the speech into segments (parts of a few seconds). They are made while we read them.
     text = " ".join(segment.text.strip() for segment in segments).strip()
     if not text:
-        raise ValueError("No speech was found in the recording.")
+        # info.duration is the length of the whole recording: 0 seconds means nothing was recorded,
+        # a few seconds means the recording was silent or too quiet (check the microphone)
+        raise ValueError(f"No speech was found in the recording ({info.duration:.1f} seconds long).")
     return {"text": text, "language": info.language}
 
 
