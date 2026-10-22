@@ -1,0 +1,12 @@
+# Secrets: the API key must never be uploaded
+.env
+
+# Python
+.venv/
+__pycache__/
+
+# Created by the app when it runs
+datasets.db
+
+# The task file from the mentor (protected content)
+*.pdf
