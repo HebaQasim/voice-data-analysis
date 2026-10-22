@@ -6,3 +6,4 @@ openpyxl
 langchain-openai
 python-dotenv
 faster-whisper
+av<19   # faster-whisper 1.2.1 does not work with av 19 yet
